@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Timecode</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            width: 800px;
+        }
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin-top: 0;
+        }
+        textarea {
+            width: 50%;
+            height: 150px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .result-container {
+            display: flex;
+            flex-direction: column;
+        }
+        .result-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .timecodes {
+            flex: 0 0 auto;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 300px;
+            padding: 2px 5px;
+            background-color: #f8f8f8;
+            border-radius: 3px;
+            border: 1px solid #e0e0e0;
+        }
+        .text-fields {
+            display: flex;
+            margin-left: auto;
+        }
+        .text-fields input {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            width: 180px;
+            margin-left: 5px;
+            flex-shrink: 0;
+        }
+        .button-group {
+            margin-bottom: 15px;
+        }
+        button {
+            padding: 8px 15px;
+            cursor: pointer;
+            margin-right: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .instructions {
+            margin-bottom: 15px;
+            color: #666;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .footer {
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+    <script language="VBScript">
+        Dim previousValue, isProcessing
+        Dim textColumns()
+        
+        Sub Window_OnLoad
+            document.getElementById("inputArea").Focus
+            window.resizeTo 850, 700
+            previousValue = ""
+            isProcessing = False
+            ReDim textColumns(0)
+        End Sub
+        
+        Sub FormatTimecode
+            If isProcessing Then Exit Sub
+            isProcessing = True
+            
+            Dim inputArea, value
+            Set inputArea = document.getElementById("inputArea")
+            value = inputArea.value
+            
+            If value = previousValue Then
+                isProcessing = False
+                Exit Sub
+            End If
+            
+            Dim formatted
+            formatted = ProcessManualInput(value)
+            
+            If value <> formatted Then
+                inputArea.value = formatted
+            End If
+            
+            previousValue = formatted
+            isProcessing = False
+            
+            UpdateTextInputs
+        End Sub
+        
+        Sub UpdateTextInputs
+            Dim lines, i
+            lines = Split(document.getElementById("inputArea").value, vbCrLf)
+            
+            If UBound(lines) > UBound(textColumns) Then
+                ReDim Preserve textColumns(UBound(lines))
+                For i = LBound(textColumns) To UBound(textColumns)
+                    If IsEmpty(textColumns(i)) Then
+                        textColumns(i) = Array("", "")
+                    End If
+                Next
+            End If
+        End Sub
+        
+        Function ProcessManualInput(text)
+            Dim lines, i, result
+            lines = Split(text, vbCrLf)
+            result = ""
+            
+            For i = 0 To UBound(lines)
+                If i > 0 Then result = result & vbCrLf
+                result = result & ProcessManualLine(lines(i))
+            Next
+            
+            ProcessManualInput = result
+        End Function
+        
+        Function ProcessManualLine(line)
+            Dim cleanValue, formatted, i, char, digitCount
+            
+            cleanValue = ""
+            digitCount = 0
+            For i = 1 To Len(line)
+                char = Mid(line, i, 1)
+                If IsNumeric(char) Then
+                    cleanValue = cleanValue & char
+                    digitCount = digitCount + 1
+                ElseIf char = " " And digitCount = 8 Then
+                    cleanValue = cleanValue & char
+                    digitCount = 0
+                End If
+            Next
+            
+            formatted = ""
+            digitCount = 0
+            For i = 1 To Len(cleanValue)
+                char = Mid(cleanValue, i, 1)
+                
+                If IsNumeric(char) Then
+                    formatted = formatted & char
+                    digitCount = digitCount + 1
+                    
+                    If digitCount Mod 2 = 0 And digitCount < 8 And i < Len(cleanValue) And Mid(cleanValue, i + 1, 1) <> " " Then
+                        formatted = formatted & ":"
+                    End If
+                    
+                    If digitCount = 8 And i < Len(cleanValue) And Mid(cleanValue, i + 1, 1) <> " " Then
+                        formatted = formatted & " "
+                        digitCount = 0
+                    End If
+                ElseIf char = " " Then
+                    formatted = formatted & char
+                    digitCount = 0
+                End If
+            Next
+            
+            If Len(Replace(Replace(formatted, ":", ""), " ", "")) = 16 Then
+                formatted = CalculateLineDuration(formatted)
+            End If
+            
+            ProcessManualLine = formatted
+        End Function
+        
+        Function CalculateLineDuration(line)
+            Dim parts, startTC, endTC, duration
+            
+            parts = Split(line, " ")
+            If UBound(parts) >= 1 Then
+                startTC = Replace(parts(0), ":", "")
+                endTC = Replace(parts(1), ":", "")
+                
+                If Len(startTC) = 8 And Len(endTC) = 8 Then
+                    duration = CalculateDuration(startTC, endTC)
+                    CalculateLineDuration = parts(0) & " " & parts(1) & " " & duration
+                    Exit Function
+                End If
+            End If
+            
+            CalculateLineDuration = line
+        End Function
+        
+        Function CalculateDuration(startTC, endTC)
+            Dim hh, mm, ss, ff, startFrames, endFrames, durationFrames, hours, minutes, seconds, frames
+            
+            hh = CInt(Left(startTC, 2))
+            mm = CInt(Mid(startTC, 3, 2))
+            ss = CInt(Mid(startTC, 5, 2))
+            ff = CInt(Right(startTC, 2))
+            startFrames = hh * 3600 * 25 + mm * 60 * 25 + ss * 25 + ff
+            
+            hh = CInt(Left(endTC, 2))
+            mm = CInt(Mid(endTC, 3, 2))
+            ss = CInt(Mid(endTC, 5, 2))
+            ff = CInt(Right(endTC, 2))
+            endFrames = hh * 3600 * 25 + mm * 60 * 25 + ss * 25 + ff
+            
+            If endFrames >= startFrames Then
+                durationFrames = endFrames - startFrames
+            Else
+                durationFrames = (24 * 3600 * 25) - (startFrames - endFrames)
+            End If
+            
+            hours = Int(durationFrames / (3600 * 25))
+            durationFrames = durationFrames - (hours * 3600 * 25)
+            minutes = Int(durationFrames / (60 * 25))
+            durationFrames = durationFrames - (minutes * 60 * 25)
+            seconds = Int(durationFrames / 25)
+            frames = durationFrames Mod 25
+            
+            CalculateDuration = Right("0" & hours, 2) & ":" & _
+                               Right("0" & minutes, 2) & ":" & _
+                               Right("0" & seconds, 2) & ":" & _
+                               Right("0" & frames, 2)
+        End Function
+        
+        Sub CalculateAll
+            Dim inputArea, value, formatted
+            Set inputArea = document.getElementById("inputArea")
+            value = inputArea.value
+            
+            formatted = ProcessManualInput(value)
+            
+            If value <> formatted Then
+                inputArea.value = formatted
+                previousValue = formatted
+            End If
+            
+            ShowResults
+        End Sub
+        
+        Sub ShowResults
+            Dim inputArea, lines, container, i
+            Set inputArea = document.getElementById("inputArea")
+            lines = Split(inputArea.value, vbCrLf)
+            
+            Set container = document.getElementById("resultsContainer")
+            container.innerHTML = ""
+            
+            For i = 0 To UBound(lines)
+                If Len(Trim(lines(i))) > 0 Then
+                    Dim rowDiv, timeDiv, inputsDiv, text1, text2
+                    Set rowDiv = document.createElement("div")
+                    rowDiv.className = "result-row"
+                    
+                    ' Блок с временными кодами
+                    Set timeDiv = document.createElement("div")
+                    timeDiv.className = "timecodes"
+                    timeDiv.innerText = ProcessManualLine(lines(i))
+                    rowDiv.appendChild timeDiv
+                    
+                    ' Текстовые поля
+                    Set inputsDiv = document.createElement("div")
+                    inputsDiv.className = "text-fields"
+                    
+                    Set text1 = document.createElement("input")
+                    text1.id = "text1_" & i
+                    text1.value = textColumns(i)(0)
+                    text1.onchange = GetRef("UpdateTextColumn")
+                    inputsDiv.appendChild text1
+                    
+                    Set text2 = document.createElement("input")
+                    text2.id = "text2_" & i
+                    text2.value = textColumns(i)(1)
+                    text2.onchange = GetRef("UpdateTextColumn")
+                    inputsDiv.appendChild text2
+                    
+                    rowDiv.appendChild inputsDiv
+                    container.appendChild rowDiv
+                End If
+            Next
+        End Sub
+        
+        Sub UpdateTextColumn
+            Dim id, parts, index, which
+            id = window.event.srcElement.id
+            parts = Split(id, "_")
+            index = CInt(parts(1))
+            which = CInt(Replace(parts(0), "text", "")) - 1
+            
+            textColumns(index)(which) = window.event.srcElement.value
+        End Sub
+        
+        Sub CopyToClipboard
+            Dim inputArea, value, lines, i, parts, output
+            
+            Set inputArea = document.getElementById("inputArea")
+            value = inputArea.value
+            lines = Split(value, vbCrLf)
+            output = ""
+            
+            For i = 0 To UBound(lines)
+                If Len(Trim(lines(i))) > 0 Then
+                    parts = Split(ProcessManualLine(lines(i)), " ")
+                    If UBound(parts) >= 2 Then
+                        output = output & parts(0) & vbTab & parts(1) & vbTab & parts(2) & _
+                                 vbTab & vbTab & vbTab & vbTab & textColumns(i)(0) & vbTab & vbTab & textColumns(i)(1) & vbCrLf
+                    End If
+                End If
+            Next
+            
+            If Len(output) > 0 Then
+                Set objHTML = CreateObject("htmlfile")
+                Set objClipboard = objHTML.parentWindow.clipboardData
+                objClipboard.setData "text", output
+                MsgBox "Данные скопированы в буфер обмена в указанном формате." & vbCrLf & _
+                       "Готовы для вставки в Excel.", vbInformation, "Копирование завершено"
+            Else
+                MsgBox "Нет валидных данных для копирования", vbExclamation, "Ошибка"
+            End If
+        End Sub
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Калькулятор длительности</h1>
+        <div class="instructions">
+            <strong>Инструкции:</strong><br>
+            1. Введите или вставьте числа - автоформатирование в HH:MM:SS:FF<br>
+            2. Длительность рассчитывается автоматически<br>
+            3. Используйте "Вычислить", чтобы принудительно начать вычисления<br>
+            4. Используйте "Вычислить", чтобы открыть текстовые блоки<br>
+            5. спользуйте "Копировать", чтобы скопировать все данные с табуляцией для столбцов Excel
+        </div>
+        
+        <textarea id="inputArea" onkeyup="FormatTimecode" placeholder="Введите или вставьте таймкоды здесь..."></textarea>
+        
+        <div class="result-container" id="resultsContainer"></div>
+        
+        <div class="button-group">
+            <button onclick="CalculateAll">Вычислить</button>
+            <button onclick="CopyToClipboard">Копировать</button>
+        </div>
+	<div class="footer">
+            Сделано с любовью за спасибо :)
+        </div>
+    </div>
+</body>
+</html>
