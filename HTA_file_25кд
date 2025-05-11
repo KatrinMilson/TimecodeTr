@@ -124,21 +124,26 @@
         Dim globalText1, globalText2
         
         Sub Window_OnLoad
-            ClearForm
-        End Sub
-        
-        Sub ClearForm
-            ' Очищаем все поля и массивы
-            document.getElementById("inputArea").value = ""
-            document.getElementById("globalText1").value = ""
-            document.getElementById("globalText2").value = ""
+            document.getElementById("inputArea").Focus
+            window.resizeTo 850, 700
             previousValue = ""
             isProcessing = False
             ReDim textColumns(0)
             ReDim repValues(0)
             ReDim partValues(0)
-            document.getElementById("resultsContainer").innerHTML = ""
+            globalText1 = ""
+            globalText2 = ""
+        End Sub
+        
+        Sub ClearForm
+            document.getElementById("inputArea").value = ""
             document.getElementById("inputArea").Focus
+            document.getElementById("resultsContainer").innerHTML = ""
+            ReDim textColumns(0)
+            ReDim repValues(0)
+            ReDim partValues(0)
+            globalText1 = ""
+            globalText2 = ""
         End Sub
         
         Sub FormatTimecode
@@ -171,17 +176,13 @@
             Dim lines, i
             lines = Split(document.getElementById("inputArea").value, vbCrLf)
             
+            ' Не обрезаем массивы, чтобы сохранить предыдущие значения
             If UBound(lines) > UBound(textColumns) Then
-                ReDim Preserve textColumns(UBound(lines))
-                ReDim Preserve repValues(UBound(lines))
-                ReDim Preserve partValues(UBound(lines))
-                For i = LBound(textColumns) To UBound(textColumns)
-                    If IsEmpty(textColumns(i)) Or Not IsArray(textColumns(i)) Then
-                        textColumns(i) = Array(globalText1, globalText2)
-                        repValues(i) = ""
-                        partValues(i) = ""
-                    End If
-                Next
+                Dim lineCount
+                lineCount = UBound(lines) + 1
+                ReDim Preserve textColumns(lineCount - 1)
+                ReDim Preserve repValues(lineCount - 1)
+                ReDim Preserve partValues(lineCount - 1)
             End If
         End Sub
         
@@ -254,7 +255,11 @@
                 
                 If Len(startTC) = 8 And Len(endTC) = 8 Then
                     duration = CalculateDuration(startTC, endTC)
-                    CalculateLineDuration = parts(0) & " " & parts(1) & " " & duration
+                    If duration <> "" Then
+                        CalculateLineDuration = parts(0) & " " & parts(1) & " " & duration
+                    Else
+                        CalculateLineDuration = "Ошибка: Конец больше начала"
+                    End If
                     Exit Function
                 End If
             End If
@@ -277,11 +282,12 @@
             ff = CInt(Right(endTC, 2))
             endFrames = hh * 3600 * 25 + mm * 60 * 25 + ss * 25 + ff
             
-            If endFrames >= startFrames Then
-                durationFrames = endFrames - startFrames
-            Else
-                durationFrames = (24 * 3600 * 25) - (startFrames - endFrames)
+            If endFrames < startFrames Then
+                CalculateDuration = ""
+                Exit Function
             End If
+            
+            durationFrames = endFrames - startFrames
             
             hours = Int(durationFrames / (3600 * 25))
             durationFrames = durationFrames - (hours * 3600 * 25)
@@ -310,6 +316,7 @@
                 previousValue = formatted
             End If
             
+            ' Обновление глобальных текстовых полей
             globalText1 = document.getElementById("globalText1").value
             globalText2 = document.getElementById("globalText2").value
             
@@ -329,20 +336,26 @@
             lines = Split(inputArea.value, vbCrLf)
             
             Set container = document.getElementById("resultsContainer")
-            container.innerHTML = ""
+            container.innerHTML = "" ' Сбрасываем контент только при очистке
             
-            If UBound(textColumns) < UBound(lines) Then
-                ReDim Preserve textColumns(UBound(lines))
-                ReDim Preserve repValues(UBound(lines))
-                ReDim Preserve partValues(UBound(lines))
-            End If
+            ' Не обрезаем массивы для хранения данных
+            Dim totalLines
+            totalLines = UBound(textColumns) + 1
             
-            ' Устанавливаем значения для каждой строки
             For i = 0 To UBound(lines)
                 If Len(Trim(lines(i))) > 0 Then
-                    textColumns(i) = Array(globalText1, globalText2) ' Копируем ID и Название
-                    repValues(i) = "" ' Инициализируем значение для rep
-                    partValues(i) = "" ' Инициализируем значение для part
+                    ' Убедитесь, что данные для каждой строки заполняются корректно
+                    If i >= totalLines Then
+                        totalLines = i + 1
+                        ReDim Preserve textColumns(totalLines - 1)
+                        ReDim Preserve repValues(totalLines - 1)
+                        ReDim Preserve partValues(totalLines - 1)
+                    End If
+                    
+                    ' Заполняем массивы данными
+                    If IsEmpty(textColumns(i)) Then
+                        textColumns(i) = Array(globalText1, globalText2)
+                    End If
                     
                     Dim rowDiv, timeDiv, inputsDiv, text1, text2Container, text2, repInput, partInput
                     Set rowDiv = document.createElement("div")
@@ -361,21 +374,21 @@
                     ' Текст 1 (ID)
                     Set text1 = document.createElement("input")
                     text1.id = "text1_" & i
-                    text1.value = globalText1  ' Используем значение из глобального ID
+                    text1.value = textColumns(i)(0)
                     text1.onchange = GetRef("UpdateTextColumn")
                     inputsDiv.appendChild text1
                     
-                    ' Текст 2 (Название)
+                    ' Текст 2 (Название) с rep и part
                     Set text2Container = document.createElement("div")
                     text2Container.className = "text2-container"
                     
                     Set text2 = document.createElement("input")
                     text2.id = "text2_" & i
-                    text2.value = globalText2  ' Используем значение из глобального Название
+                    text2.value = textColumns(i)(1)
                     text2.onchange = GetRef("UpdateTextColumn")
                     text2Container.appendChild text2
                     
-                    ' Добавляем реп и поле для числа
+                    ' Добавляем rep
                     Set repSpan = document.createElement("span")
                     repSpan.innerText = "rep"
                     text2Container.appendChild repSpan
@@ -383,11 +396,11 @@
                     Set repInput = document.createElement("input")
                     repInput.id = "rep_" & i
                     repInput.className = "number-input"
-                    repInput.value = repValues(i) ' Значение rep
+                    repInput.value = repValues(i)
                     repInput.onchange = GetRef("UpdateRepValue")
                     text2Container.appendChild repInput
                     
-                    ' Добавляем part и поле для числа
+                    ' Добавляем part
                     Set partSpan = document.createElement("span")
                     partSpan.innerText = "part"
                     text2Container.appendChild partSpan
@@ -395,7 +408,7 @@
                     Set partInput = document.createElement("input")
                     partInput.id = "part_" & i
                     partInput.className = "number-input"
-                    partInput.value = partValues(i) ' Значение part
+                    partInput.value = partValues(i)
                     partInput.onchange = GetRef("UpdatePartValue")
                     text2Container.appendChild partInput
                     
@@ -404,7 +417,7 @@
                     container.appendChild rowDiv
                 End If
             Next
-            
+
             If Err.Number <> 0 Then
                 MsgBox "Ошибка при отображении результатов: " & Err.Description, vbExclamation, "Ошибка"
                 Err.Clear
@@ -420,13 +433,15 @@
             index = CInt(parts(1))
             which = CInt(Replace(parts(0), "text", "")) - 1
             
+            ' Убедитесь, что массивы достаточно велики для хранения значений
             If index > UBound(textColumns) Then
                 ReDim Preserve textColumns(index)
                 ReDim Preserve repValues(index)
                 ReDim Preserve partValues(index)
             End If
             
-            If IsEmpty(textColumns(index)) Or Not IsArray(textColumns(index)) Then
+            ' Обновление текста
+            If IsEmpty(textColumns(index)) Then
                 textColumns(index) = Array("", "")
             End If
             
@@ -446,6 +461,7 @@
             parts = Split(id, "_")
             index = CInt(parts(1))
             
+            ' Убедитесь, что массив repValues достаточно велик
             If index > UBound(repValues) Then
                 ReDim Preserve repValues(index)
             End If
@@ -466,6 +482,7 @@
             parts = Split(id, "_")
             index = CInt(parts(1))
             
+            ' Убедитесь, что массив partValues достаточно велик
             If index > UBound(partValues) Then
                 ReDim Preserve partValues(index)
             End If
@@ -492,6 +509,13 @@
                 If Len(Trim(lines(i))) > 0 Then
                     parts = Split(ProcessManualLine(lines(i)), " ")
                     If UBound(parts) >= 2 Then
+                        ' Проверяем и инициализируем массивы если нужно
+                        If i > UBound(textColumns) Then
+                            ReDim Preserve textColumns(i)
+                            ReDim Preserve repValues(i)
+                            ReDim Preserve partValues(i)
+                        End If
+                        
                         output = output & parts(0) & vbTab & parts(1) & vbTab & parts(2) & _
                                  vbTab & vbTab & vbTab & vbTab & textColumns(i)(0) & vbTab & vbTab & _
                                  textColumns(i)(1) & " rep" & repValues(i) & " part" & partValues(i) & vbCrLf
@@ -522,7 +546,6 @@
         Sub UpdateGlobalText2
             globalText2 = document.getElementById("globalText2").value
         End Sub
-        
     </script>
 </head>
 <body>
